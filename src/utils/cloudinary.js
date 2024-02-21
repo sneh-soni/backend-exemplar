@@ -12,7 +12,7 @@ cloudinary.config({
 // for production grade ==> 1. upload to local database (using multer)
 // 2. upload to cloudinary from database (here) 3. unlink using file system (fs)
 
-const uploadOnCloudinary = async (localFilePath) => {
+export const uploadOnCloudinary = async (localFilePath) => {
   try {
     if (!localFilePath) return null;
     const response = await cloudinary.uploader.upload(localFilePath, {

@@ -1,7 +1,7 @@
 // Higher Order Function ==> takes func as argument
 
-const asynchandler = (func) => {
-  async (req, res, next) => {
+const asyncHandler = (func) => {
+  return async (req, res, next) => {
     try {
       await func(req, res, next);
     } catch (error) {
@@ -13,7 +13,7 @@ const asynchandler = (func) => {
     /*
     Alternate for try-catch
 
-    Promise
+    return Promise
     .resolve(func(req, res, next))
     .catch((error)=>{
         next(error)
@@ -22,4 +22,4 @@ const asynchandler = (func) => {
   };
 };
 
-export default asynchandler;
+export default asyncHandler;
