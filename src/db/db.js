@@ -4,7 +4,10 @@ import { DB_NAME } from "../constants.js";
 const connectDB = async () => {
   try {
     const Connection = await mongoose.connect(
-      `${process.env.MONGODB_URL}/${DB_NAME}`
+      `${process.env.MONGODB_URL}/${DB_NAME}`,
+      {
+        writeConcern: { w: "majority" },
+      }
     );
     console.log("Mongodb connected: ", Connection.connection.host);
   } catch (error) {
