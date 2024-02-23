@@ -5,6 +5,7 @@ import { User } from "../models/user.model.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
 
 export const registerUser = asyncHandler(async (req, res) => {
+  // Get data from request
   const { username, fullname, email, password } = req.body;
 
   /*
@@ -18,6 +19,7 @@ export const registerUser = asyncHandler(async (req, res) => {
   }
   */
 
+  // Check if all fields are filled
   if (
     [username, fullname, email, password].some((field) => {
       return field?.trim() === "";
@@ -26,9 +28,12 @@ export const registerUser = asyncHandler(async (req, res) => {
     throw new ErrorApi(400, "All fields are mandatory");
   }
 
+  // Search if User already exists with same username || email
   const existedUser = await User.findOne({
     $or: [{ username }, { email }],
   });
+
+  // If user already exists
   if (existedUser) {
     throw new ErrorApi(402, "Username or email already exists");
   }
@@ -64,7 +69,11 @@ export const registerUser = asyncHandler(async (req, res) => {
 }
   */
 
+  // multer gives access to req.files
+  // Each is an array of object
   const avatarLocalPath = req.files?.avatar[0]?.path;
+
+  // Since coverImage is not required it is not checked furthur, so we have to checkit here
   let coverImageLocalPath = "";
   if (
     req.files &&
@@ -74,17 +83,21 @@ export const registerUser = asyncHandler(async (req, res) => {
     coverImageLocalPath = req.files.coverImage[0]?.path;
   }
 
+  // Check avatarLocalPath
   if (!avatarLocalPath) {
     throw new ErrorApi(400, "Avatar is required");
   }
 
+  // Upload both to cloudinary
   const avatar = await uploadOnCloudinary(avatarLocalPath);
   const coverImage = await uploadOnCloudinary(coverImageLocalPath);
 
+  // If avatar not uploaded to cloudinary
   if (!avatar) {
     throw new ErrorApi(400, "Avatar is required");
   }
 
+  // Create a user
   const user = await User.create({
     username: username.toLowerCase(),
     fullname: fullname,
@@ -94,15 +107,80 @@ export const registerUser = asyncHandler(async (req, res) => {
     password: password,
   });
 
+  // Remove sensitive(password) / not required while registering(refresh token)
+  // feilds from created user to create a response to send
   const createdUser = await User.findById(user._id).select(
     "-password -refreshToken"
   );
 
+  // Last check if user is successfully registered
   if (!createdUser) {
     throw new ErrorApi(500, "something went wrong while registering the user");
   }
 
+  // return response
   return res
     .status(202)
     .json(new ResponseApi(202, "user registered successfully", createdUser));
+});
+
+export const loginUser = asyncHandler(async (req, res) => {
+  // Get data from request
+  const { username, email, password } = req.body;
+
+  // check if data must have username || email
+  if (!username || !email) {
+    throw new ErrorApi(400, "Username or email is required");
+  }
+
+  // Find user with username || email
+  const user = await User.findOne({
+    $or: [{ username: username.toLowerCase() }, { email }],
+  });
+
+  // User does not exist
+  if (!user) {
+    throw new ErrorApi(404, "Username or email does not exist");
+  }
+
+  /*
+    All the methods created in user model are part of "user" now
+    since we created them in model so we can directly use 
+    those methods (without importing) on "user.method" and not on "User.method", 
+    "User" is reference to database.
+  */
+  // Password check of user
+  const isPassValid = await user.isPasswordCorrect(password);
+
+  // Invalid password
+  if (!isPassValid) {
+    throw new ErrorApi(402, "Password is incorrect");
+  }
+
+  // Generate access token and refresh token
+  const accessToken = await user.generateAccessToken();
+  const refreshToken = await user.generateRefreshToken();
+
+  // Update refresh token of user in db
+  user.refreshToken = refreshToken;
+  await user.save({ validateBeforeSave: false });
+
+  // Refetch user as loggedIn user since refresh token is updated in db
+  const loggedInUser = await User.findById(user._id).select(
+    "-password -refreshToken"
+  );
+
+  // Set cookie options
+  // secure: true ==> cookies can only be altered on server side
+  const options = {
+    httpOnly: true,
+    secure: true,
+  };
+
+  // Return response while setting cookies
+  return res
+    .status(200)
+    .cookie("accessToken", accessToken, options)
+    .cookie("refreshToken", refreshToken, options)
+    .json(new ResponseApi(200, "user loggedIn successfully", loggedInUser));
 });
