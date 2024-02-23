@@ -171,6 +171,7 @@ export const loginUser = asyncHandler(async (req, res) => {
   );
 
   // Set cookie options
+  // using cookie parser
   // secure: true ==> cookies can only be altered on server side
   const options = {
     httpOnly: true,
@@ -183,4 +184,23 @@ export const loginUser = asyncHandler(async (req, res) => {
     .cookie("accessToken", accessToken, options)
     .cookie("refreshToken", refreshToken, options)
     .json(new ResponseApi(200, "user loggedIn successfully", loggedInUser));
+});
+
+export const logoutUser = asyncHandler(async (req, res) => {
+  // Delete refresh token from db
+  await User.findByIdAndUpdate(req.user._id, {
+    refreshToken: "",
+  });
+
+  const options = {
+    httpOnly: true,
+    secure: true,
+  };
+
+  // Clearing cookies from user
+  return res
+    .status(200)
+    .clearCookie("accessToken", options)
+    .clearCookie("refreshToken", options)
+    .json(new ResponseApi(200, "User logged out successfully", {}));
 });
