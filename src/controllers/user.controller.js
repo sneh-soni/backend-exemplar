@@ -3,6 +3,41 @@ import ErrorApi from "../utils/ErrorApi.js";
 import ResponseApi from "../utils/ResponseApi.js";
 import { User } from "../models/user.model.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
+import jwt from "jsonwebtoken";
+
+// Set cookie options (using cookie parser, we can access user's cookies)
+// {secure: true} ==> cookies can only be altered on server side
+const options = {
+  httpOnly: true,
+  secure: true,
+};
+
+const generateAccessAndRefreshToken = async (user_id) => {
+  // Get user from db using id
+  const user = await User.findById(user_id);
+
+  // user not present
+  if (!user) {
+    throw new ErrorApi(404, "Invalid User");
+  }
+
+  // Generate access token and refresh token
+  const accessToken = await user.generateAccessToken();
+  const refreshToken = await user.generateRefreshToken();
+
+  // Update refresh token of user in db
+  user.refreshToken = refreshToken;
+
+  // Saves user without validating any feild
+  await user.save({ validateBeforeSave: false });
+
+  // Refetch user as newUser since refresh token is updated in db
+  const newUser = await User.findById(user._id).select(
+    "-password -refreshToken"
+  );
+
+  return { accessToken, refreshToken, newUser };
+};
 
 export const registerUser = asyncHandler(async (req, res) => {
   // Get data from request
@@ -129,7 +164,7 @@ export const loginUser = asyncHandler(async (req, res) => {
   const { username, email, password } = req.body;
 
   // check if data must have username || email
-  if (!username || !email) {
+  if (!username && !email) {
     throw new ErrorApi(400, "Username or email is required");
   }
 
@@ -157,33 +192,22 @@ export const loginUser = asyncHandler(async (req, res) => {
     throw new ErrorApi(402, "Password is incorrect");
   }
 
-  // Generate access token and refresh token
-  const accessToken = await user.generateAccessToken();
-  const refreshToken = await user.generateRefreshToken();
+  // Get access and refresh token from generateAccessAndRefreshToken
+  const { accessToken, refreshToken, newUser } =
+    await generateAccessAndRefreshToken(user._id);
 
-  // Update refresh token of user in db
-  user.refreshToken = refreshToken;
-  await user.save({ validateBeforeSave: false });
-
-  // Refetch user as loggedIn user since refresh token is updated in db
-  const loggedInUser = await User.findById(user._id).select(
-    "-password -refreshToken"
-  );
-
-  // Set cookie options
-  // using cookie parser
-  // secure: true ==> cookies can only be altered on server side
-  const options = {
-    httpOnly: true,
-    secure: true,
-  };
-
-  // Return response while setting cookies
+  // Return response while setting user's cookies
   return res
     .status(200)
     .cookie("accessToken", accessToken, options)
     .cookie("refreshToken", refreshToken, options)
-    .json(new ResponseApi(200, "user loggedIn successfully", loggedInUser));
+    .json(
+      new ResponseApi(200, "user loggedIn successfully", {
+        loggedInUser: newUser,
+        accessToken,
+        refreshToken,
+      })
+    );
 });
 
 export const logoutUser = asyncHandler(async (req, res) => {
@@ -192,15 +216,57 @@ export const logoutUser = asyncHandler(async (req, res) => {
     refreshToken: "",
   });
 
-  const options = {
-    httpOnly: true,
-    secure: true,
-  };
-
   // Clearing cookies from user
   return res
     .status(200)
     .clearCookie("accessToken", options)
     .clearCookie("refreshToken", options)
     .json(new ResponseApi(200, "User logged out successfully", {}));
+});
+
+export const refreshAccessToken = asyncHandler(async (req, res) => {
+  // Get user's refresh token
+  const incomingRefreshToken =
+    req.cookies.refreshToken || req.body.refreshToken;
+
+  // user don't have one
+  if (!incomingRefreshToken) {
+    throw new ErrorApi(406, "Unauthorized Refresh Token");
+  }
+
+  // Decode token
+  const decodedToken = await jwt.verify(
+    incomingRefreshToken,
+    process.env.REFRESH_TOKEN_SECRET
+  );
+
+  // Get user from _id we got from decodedToken (defined in user.model.js)
+  const user = await User.findById(decodedToken?._id);
+
+  // user not present
+  if (!user) {
+    throw new ErrorApi(401, "Invalid User with refresh token");
+  }
+
+  // Incoming refreshToken doen not match with user's db's refreshToken
+  if (user?.refreshToken !== incomingRefreshToken) {
+    throw new ErrorApi(408, "Wrong or invalid refresh token");
+  }
+
+  // Generate new access and refresh tokens
+  const { accessToken, refreshToken, newUser } =
+    await generateAccessAndRefreshToken(user._id);
+
+  //return response while setting user's cookies
+  return res
+    .status(200)
+    .cookie("accessToken", accessToken, options)
+    .cookie("refreshToken", refreshToken, options)
+    .json(
+      new ResponseApi(202, "Access Token Refreshed Successfully", {
+        refreshedUser: newUser,
+        newRefreshToken: refreshToken,
+        accessToken,
+      })
+    );
 });
