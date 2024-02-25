@@ -270,3 +270,94 @@ export const refreshAccessToken = asyncHandler(async (req, res) => {
       })
     );
 });
+
+export const updatePassword = asyncHandler(async (req, res) => {
+  const { oldPassword, newPassword } = req.body;
+
+  const user = await User.findById(req.user?._id);
+
+  const isPasswordCorrect = await user.isPasswordCorrect(oldPassword);
+
+  if (!isPasswordCorrect) {
+    throw new ErrorApi(404, "Wrong password entered");
+  }
+
+  user.password = newPassword;
+
+  await user.save({ validateBeforeSave: false });
+
+  return res
+    .status(200)
+    .json(new ResponseApi(200, "Password changed successfylly"));
+});
+
+export const updateAccoutDetails = asyncHandler(async (req, res) => {
+  const { username, fullname } = req.body;
+
+  if (!username || !fullname) {
+    throw new ErrorApi(404, "Invalid username or fullname");
+  }
+
+  const user = await User.findByIdAndUpdate(
+    req.user?._id,
+    {
+      $set: {
+        username: username,
+        fullname: fullname,
+      },
+    },
+    { new: true }
+  ).select("-password");
+
+  return res
+    .status(200)
+    .json(new ResponseApi(200, "Details updated successfully", user));
+});
+
+export const updateAvatar = asyncHandler(async (req, res) => {
+  const avatarLocalPath = req.file?.path;
+
+  if (!avatarLocalPath) {
+    throw new ErrorApi(404, "Invalid Avatar Image");
+  }
+
+  const avatar = await uploadOnCloudinary(avatarLocalPath);
+
+  const user = await User.findByIdAndUpdate(
+    req.user._id,
+    {
+      $set: {
+        avatar: avatar.secure_url,
+      },
+    },
+    { new: true }
+  );
+
+  return res
+    .status(200)
+    .json(new ResponseApi(200, "User avatar updated successfully", user));
+});
+
+export const updateCoverImage = asyncHandler(async (req, res) => {
+  const coverImageLocalPath = req.file?.path;
+
+  if (!coverImageLocalPath) {
+    throw new ErrorApi(404, "Invalid Cover Image");
+  }
+
+  const coverImage = await uploadOnCloudinary(coverImageLocalPath);
+
+  const user = await User.findByIdAndUpdate(
+    req.user._id,
+    {
+      $set: {
+        coverImage: coverImage.secure_url,
+      },
+    },
+    { new: true }
+  );
+
+  return res
+    .status(200)
+    .json(new ResponseApi(200, "User CoverImage updated successfully", user));
+});
