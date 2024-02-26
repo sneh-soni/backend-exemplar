@@ -1,5 +1,6 @@
 import { Router } from "express";
 import {
+  getUserChannel,
   loginUser,
   logoutUser,
   refreshAccessToken,
@@ -15,7 +16,7 @@ import { verifyJWT } from "../middlewares/auth.middleware.js";
 const router = Router();
 
 router.route("/register").post(
-  // user array of objects in case of multiple files
+  // use array of objects in case of multiple files
   upload.fields([
     {
       name: "avatar",
@@ -45,5 +46,8 @@ router
 router
   .route("/update-coverimage")
   .post(verifyJWT, upload.single("coverImage"), updateCoverImage);
+
+// router.route("/getUserChannel").get(getUserChannel); ==> Query route
+router.route("/getUserChannel/:username").get(getUserChannel); // Params route
 
 export default router;

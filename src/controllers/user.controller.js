@@ -272,32 +272,42 @@ export const refreshAccessToken = asyncHandler(async (req, res) => {
 });
 
 export const updatePassword = asyncHandler(async (req, res) => {
+  // Get { oldPassword, newPassword } from request
   const { oldPassword, newPassword } = req.body;
 
+  // find user using req.user?._id
   const user = await User.findById(req.user?._id);
 
+  // check if password is correct ==> defined in user model
   const isPasswordCorrect = await user.isPasswordCorrect(oldPassword);
 
+  // if password is not correct
   if (!isPasswordCorrect) {
     throw new ErrorApi(404, "Wrong password entered");
   }
 
+  // set new password to user
   user.password = newPassword;
 
+  // Save user
   await user.save({ validateBeforeSave: false });
 
+  // return response
   return res
     .status(200)
     .json(new ResponseApi(200, "Password changed successfylly"));
 });
 
 export const updateAccoutDetails = asyncHandler(async (req, res) => {
+  // Get { username, fullname } from request
   const { username, fullname } = req.body;
 
+  // check if username or fullname is empty
   if (!username || !fullname) {
     throw new ErrorApi(404, "Invalid username or fullname");
   }
 
+  // find user and update directly using $set
   const user = await User.findByIdAndUpdate(
     req.user?._id,
     {
@@ -306,23 +316,28 @@ export const updateAccoutDetails = asyncHandler(async (req, res) => {
         fullname: fullname,
       },
     },
-    { new: true }
-  ).select("-password");
+    { new: true } // throws updated user in respose
+  ).select("-password"); // remove password from user to show in response
 
+  // return response
   return res
     .status(200)
     .json(new ResponseApi(200, "Details updated successfully", user));
 });
 
 export const updateAvatar = asyncHandler(async (req, res) => {
+  // Get avatarLocalPath from req.file by multer
   const avatarLocalPath = req.file?.path;
 
+  // avatarLocalPath not present
   if (!avatarLocalPath) {
     throw new ErrorApi(404, "Invalid Avatar Image");
   }
 
+  // Upload to cloudinary
   const avatar = await uploadOnCloudinary(avatarLocalPath);
 
+  // update user in db
   const user = await User.findByIdAndUpdate(
     req.user._id,
     {
@@ -333,20 +348,25 @@ export const updateAvatar = asyncHandler(async (req, res) => {
     { new: true }
   );
 
+  // return response
   return res
     .status(200)
     .json(new ResponseApi(200, "User avatar updated successfully", user));
 });
 
 export const updateCoverImage = asyncHandler(async (req, res) => {
+  // Get coverImageLocalPath from req.file by multer
   const coverImageLocalPath = req.file?.path;
 
+  // coverImageLocalPath not present
   if (!coverImageLocalPath) {
     throw new ErrorApi(404, "Invalid Cover Image");
   }
 
+  // Upload to cloudinary
   const coverImage = await uploadOnCloudinary(coverImageLocalPath);
 
+  // update user in db
   const user = await User.findByIdAndUpdate(
     req.user._id,
     {
@@ -357,7 +377,103 @@ export const updateCoverImage = asyncHandler(async (req, res) => {
     { new: true }
   );
 
+  // return response
   return res
     .status(200)
     .json(new ResponseApi(200, "User CoverImage updated successfully", user));
+});
+
+//TODO: make a function to delete older avatar and coverImage from cloudinary
+
+export const getUserChannel = asyncHandler(async (req, res) => {
+  // Get username form req
+  // const { username } = req.query; ==> Query input
+  const { username } = req.params;
+
+  // empty username
+  if (!username?.trim()) {
+    throw new ErrorApi(400, "Username is required");
+  }
+
+  // Get channel // using aggregation on user
+  const channel = await User.aggregate([
+    // array of objects ==> each object is a pipeline
+    // output of previous pipeline is input to next pipeline
+    {
+      // match user with username came in req ==> single user here
+      // can also use await User.find({username}) to get user
+      $match: {
+        username: username,
+      },
+    },
+    {
+      // aggregates "subscribers" array to user
+      // for all localField: "_id" (in user) ===  foreignField: "channel" (in subscription),
+      // select fields where, (user._id === subscription.channel)
+      // to count subscribers of userChannel
+      $lookup: {
+        from: "subscription",
+        localField: "_id",
+        foreignField: "channel",
+        as: "subscribers",
+      },
+    },
+    {
+      // aggregates "subscribedTo" array to user
+      // for all localField: "_id" (in user) ===  foreignField: "subscriber" (in subscription),
+      // select fields where, (user._id === subscription.subscriber)
+      // to count channels to whom userChannel is subscribed To
+      $lookup: {
+        from: "subscription",
+        localField: "_id",
+        foreignField: "subscriber",
+        as: "subscribedTo",
+      },
+    },
+    {
+      // addFields to user
+      $addFields: {
+        subscribers: {
+          // counting size of "subscribers" field, therefore used $
+          $size: "$subscribers",
+        },
+        subscribedTo: {
+          // counting size of "subscribedTo" field
+          $size: "$subscribedTo",
+        },
+        isSubscribed: {
+          $cond: {
+            if: { $in: [req.user?._id, "$subscribers.subscriber"] },
+            // true if any of subscribers field.subscriber === req.user?._id
+            then: true,
+            else: false,
+          },
+        },
+      },
+    },
+    {
+      // things to put in final user response
+      $project: {
+        username: 1,
+        fullname: 1,
+        avatar: 1,
+        coverImage: 1,
+        subscribers: 1,
+        subscribedTo: 1,
+        isSubscribed: 1,
+      },
+    },
+  ]);
+
+  // User channel not found
+  if (!channel?.length) {
+    throw new ErrorApi(404, "User not found");
+  }
+
+  // return response (channel ==> array of objects (here we've only one object in it))
+  return res
+    .status(200)
+    .json(
+      new ResponseApi(200, "User channel fetched successfullt", channel[0])
+    );
 });
