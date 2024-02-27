@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   getUserChannel,
+  getUserWatchHistory,
   loginUser,
   logoutUser,
   refreshAccessToken,
@@ -37,17 +38,19 @@ router.route("/refresh-token").post(refreshAccessToken);
 
 router.route("/update-password").post(verifyJWT, updatePassword);
 
-router.route("/update-account-details").post(verifyJWT, updateAccoutDetails);
+router.route("/update-account-details").patch(verifyJWT, updateAccoutDetails);
 
 router
   .route("/update-avatar")
-  .post(verifyJWT, upload.single("avatar"), updateAvatar);
+  .patch(verifyJWT, upload.single("avatar"), updateAvatar);
 
 router
   .route("/update-coverimage")
-  .post(verifyJWT, upload.single("coverImage"), updateCoverImage);
+  .patch(verifyJWT, upload.single("coverImage"), updateCoverImage);
 
 // router.route("/getUserChannel").get(getUserChannel); ==> Query route
 router.route("/getUserChannel/:username").get(getUserChannel); // Params route
+
+router.route("/watchHistory").get(verifyJWT, getUserWatchHistory);
 
 export default router;

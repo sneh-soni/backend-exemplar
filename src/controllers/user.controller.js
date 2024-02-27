@@ -4,6 +4,7 @@ import ResponseApi from "../utils/ResponseApi.js";
 import { User } from "../models/user.model.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
 
 // Set cookie options (using cookie parser, we can access user's cookies)
 // {secure: true} ==> cookies can only be altered on server side
@@ -476,4 +477,72 @@ export const getUserChannel = asyncHandler(async (req, res) => {
     .json(
       new ResponseApi(200, "User channel fetched successfullt", channel[0])
     );
+});
+
+export const getUserWatchHistory = asyncHandler(async (req, res) => {
+  // Get user with watchHistory using aggregation
+  const user = await User.aggregate([
+    {
+      // match user with id
+      // _id is string but _id in monogodb is ObjectId('string _id here')
+      // mongoose converts ObjectId to string and vice versa behind the scenes
+      // therefore to match _id(string) in db
+      // we need to convert req.user?._id to ObjectId first using mongoose
+      $match: {
+        _id: new mongoose.Types.ObjectId(req.user?._id),
+      },
+    },
+    {
+      // we are in user
+      // aggregate watcHistory from videos
+      $lookup: {
+        from: "videos",
+        localField: "watchHistory",
+        foreignField: "_id",
+        as: "watchHistory",
+        // since videos have owner field of type User
+        // therefore to aggregate/populate owner we applied sub pipeline again
+        // from videos to users
+        pipeline: [
+          {
+            $lookup: {
+              from: "users",
+              localField: "owner",
+              foreignField: "_id",
+              as: "owner",
+              pipeline: [
+                {
+                  // use $project since user is very large
+                  // and we don't want all info in owner
+                  $project: {
+                    username: 1,
+                    fullname: 1,
+                    avatar: 1,
+                    coverImage: 1,
+                  },
+                },
+              ],
+            },
+          },
+          {
+            // Add owner[0] in user for simplicity in frontend
+            $addFields: {
+              owner: {
+                $first: "$owner", // since owner is a field now, therefore $
+              },
+            },
+          },
+        ],
+      },
+    },
+  ]);
+
+  // return response
+  return res.status(200).json(
+    new ResponseApi(
+      200,
+      "User watch history fetched successfully",
+      user[0].watchHistory // since returns array
+    )
+  );
 });
