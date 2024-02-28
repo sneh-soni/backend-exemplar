@@ -45,7 +45,7 @@ export const registerUser = asyncHandler(async (req, res) => {
   const { username, fullname, email, password } = req.body;
 
   /*
-  console.log("Request.body: ", req.body);
+  ("Request.body: ", req.body);
 
   Request.body:  [Object: null prototype] {
   email: 'email@gmail.com',
@@ -75,7 +75,7 @@ export const registerUser = asyncHandler(async (req, res) => {
   }
 
   /*
-  console.log("Request.files: ", req.files);
+  ("Request.files: ", req.files);
 
   Request.files:  [Object: null prototype] {
   avatar: [

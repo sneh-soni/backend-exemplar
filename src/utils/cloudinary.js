@@ -21,7 +21,7 @@ export const uploadOnCloudinary = async (localFilePath) => {
     fs.unlinkSync(localFilePath);
 
     /*
-    console.log("Cloudinary response: ", response);
+    ("Cloudinary response: ", response);
 
     Cloudinary response:  {
       asset_id: '9c3782100ac3d1a52efd8a1371ad6427',
